@@ -1,0 +1,6 @@
+/build
+/pico-sdk
+/pico-extras
+.DS_Store
+pico_extras_import.cmake
+pico_sdk_import.cmake
