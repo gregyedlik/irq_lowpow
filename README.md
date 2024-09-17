@@ -23,7 +23,3 @@ So, there are three states the microcontroller can be in:
 The goal is to have a sleep mode with the lowest power consumption possible that does not block the watchdog from working.
 
 Once woken from low-power-sleep mode, the microcontroller should be restored to full frequency, as it was before entering sleep mode. There should be functionality to confirm this.
-
-## Known problem
-
-Based on current measurements, it seems not everything is restored. This is still a mystery to solve.
