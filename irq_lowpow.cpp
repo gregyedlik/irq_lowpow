@@ -9,13 +9,14 @@ Note that the printf() will all go to UART. Running this via USB does not work w
 ***/
 
 #include <stdio.h>
-#include "pico/stdlib.h"
 #include "pico/runtime_init.h"
+#include "pico/stdlib.h"
 #include "hardware/clocks.h"
-#include "hardware/watchdog.h"
-#include "hardware/sync.h"          // Include this header for __wfi()
-#include "hardware/pll.h"           // for pll_sys and pll_init() and pll_deinit()
+#include "hardware/irq.h"                           // For interrupt enable and disable
+#include "hardware/pll.h"                           // for pll_sys and pll_init() and pll_deinit()
 #include "hardware/structs/vreg_and_chip_reset.h"   // To be able to read the setup for the VREG
+#include "hardware/sync.h"                          // Include this header for __wfi()
+#include "hardware/watchdog.h"
 
 #define UART uart0                  // This is the default uart to use
 const uint DEBOUNCE_DELAY_MS = 100; // 100 ms debounce time for the physical button / pin driving the interrupt
@@ -27,20 +28,6 @@ volatile absolute_time_t last_interrupt_time;
 
 inline static void ledON() { gpio_put(LED_PIN, true); }
 inline static void ledOFF() { gpio_put(LED_PIN, false); }
-
-void my_isr(uint gpio, uint32_t events)
-{
-    absolute_time_t now = get_absolute_time();
-    // Check if enough time has passed since the last interrupt
-    if (absolute_time_diff_us(last_interrupt_time, now) > DEBOUNCE_DELAY_MS * 1000) {
-        last_interrupt_time = now;
-
-        printf("Interrupt!\n\n");
-        watchdog_update();
-
-        gpio_acknowledge_irq(INT_PIN, GPIO_IRQ_EDGE_FALL);
-    }
-}
 
 void showFreq(void)
 {
@@ -77,6 +64,21 @@ void showFreq(void)
 
     printf("\n");
     uart_tx_wait_blocking(UART);
+}
+
+void my_isr(uint gpio, uint32_t events)
+{
+    absolute_time_t now = get_absolute_time();
+    // Check if enough time has passed since the last interrupt
+    if (absolute_time_diff_us(last_interrupt_time, now) > DEBOUNCE_DELAY_MS * 1000) {
+        last_interrupt_time = now;
+        watchdog_update();
+
+        printf("Interrupt!\n\n");
+        showFreq();
+        printf("End interrupt.\n");
+        gpio_acknowledge_irq(INT_PIN, GPIO_IRQ_EDGE_FALL);
+    }
 }
 
 int main()
@@ -168,6 +170,7 @@ int main()
     uint save = scb_hw->scr;
 
     printf("Going to sleep with dog and enabled interrupt...\n\n");
+    uint32_t irq_status = save_and_disable_interrupts();  // Disable interrupts and save status
     watchdog_enable(WATCHDOG_TIMEOUT, 1);
     gpio_set_irq_enabled_with_callback(INT_PIN, GPIO_IRQ_EDGE_FALL, true, &my_isr);
 
@@ -192,6 +195,11 @@ int main()
     runtime_init_clocks();
 
     stdio_init_all();
+
+    printf("This runs before the interrupt, even though it was triggered by the interrupt.\n");
+
+    restore_interrupts(irq_status);  // Restore interrupts to previous state
+
     printf("Woke up from interrupt and restored frequencies:\n");
     showFreq();
 
@@ -205,8 +213,11 @@ int main()
 
     // Busy wait current consumption: 25.0 mA
 
+    watchdog_update();
+
+
     printf("Demonstrating light sleep while waiting for more interrupts to pat the dog.\n");
-    //uart_tx_wait_blocking(UART);
+    uart_tx_wait_blocking(UART);
     while(1)
     {
         printf(".\n");
